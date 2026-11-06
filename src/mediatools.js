@@ -127,6 +127,15 @@ function prepBg(img, W, H) {
   return c
 }
 
+// Pre-scaled copy of a big photo so every frame draws fast (drawn once per photo)
+function prepFit(img, W, H) {
+  const k = Math.min(1, (Math.max(W, H) * 1.1) / Math.max(img.width, img.height))
+  const c = document.createElement('canvas')
+  c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k))
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+  return c
+}
+
 function drawSlide(ctx, s, W, H, p) {
   const u = Math.min(W, H)
   if (s.kind === 'photo') {
@@ -134,9 +143,10 @@ function drawSlide(ctx, s, W, H, p) {
     const ah = caption ? H * 0.8 : H            // leave room for the caption
     if (s.bg) ctx.drawImage(s.bg, 0, 0, W, H)
     // whole photo is always visible (nothing is cropped), slow gentle zoom
-    const r = Math.min(W / s.img.width, ah / s.img.height) * (1 + 0.05 * p)
-    const w = s.img.width * r, h = s.img.height * r
-    ctx.drawImage(s.img, (W - w) / 2, (ah - h) / 2, w, h)
+    const pic = s.fit || s.img
+    const r = Math.min(W / pic.width, ah / pic.height) * (1 + 0.05 * p)
+    const w = pic.width * r, h = pic.height * r
+    ctx.drawImage(pic, (W - w) / 2, (ah - h) / 2, w, h)
     if (caption) {
       const g = ctx.createLinearGradient(0, H * 0.7, 0, H)
       g.addColorStop(0, 'rgba(20,4,10,0)'); g.addColorStop(1, 'rgba(20,4,10,.9)')
@@ -164,14 +174,14 @@ export async function audioDuration(file) {
   try { return (await ac.decodeAudioData(await file.arrayBuffer())).duration } finally { ac.close() }
 }
 
-export async function buildVideo({ slides, audioFile, duration, W, H, onProgress }) {
+export async function buildVideo({ slides, audioFile, duration, W, H, onProgress, signal }) {
   try { await document.fonts.load(`64px 'Great Vibes'`); await document.fonts.load(`700 40px 'Cormorant Garamond'`) } catch {}
-  // one blurred background per unique photo (repeated slides share it)
-  const bgs = new Map()
+  // one pre-scaled copy + one blurred background per unique photo (repeated slides share them)
+  const fits = new Map(), bgs = new Map()
   slides.forEach((s) => {
     if (s.kind !== 'photo') return
-    if (!bgs.has(s.img)) bgs.set(s.img, prepBg(s.img, W, H))
-    s.bg = bgs.get(s.img)
+    if (!fits.has(s.img)) { fits.set(s.img, prepFit(s.img, W, H)); bgs.set(s.img, prepBg(s.img, W, H)) }
+    s.fit = fits.get(s.img); s.bg = bgs.get(s.img)
   })
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H
   const ctx = canvas.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
@@ -192,28 +202,45 @@ export async function buildVideo({ slides, audioFile, duration, W, H, onProgress
   const durs = slides.map((s) => s.dur || SLIDE)
   const total = duration || durs.reduce((a, b) => a + b, 0)
   const starts = durs.map((_, k) => durs.slice(0, k).reduce((a, b) => a + b, 0))
+
+  // keep the screen awake while recording (phones stop the recording when the screen sleeps)
+  let wake = null
+  try { wake = await navigator.wakeLock?.request('screen') } catch {}
+
   return new Promise((resolve, reject) => {
+    let timer = null, cancelled = false
+    const cleanup = () => {
+      clearInterval(timer)
+      try { wake && wake.release() } catch {}
+      try { src && src.stop() } catch {}
+      try { stream.getTracks().forEach((t) => t.stop()) } catch {}
+      try { ac && ac.close() } catch {}
+    }
     rec.onstop = () => {
-      if (ac) ac.close()
+      cleanup()
+      if (cancelled) return reject(new Error('Cancelled'))
       resolve({ url: URL.createObjectURL(new Blob(chunks, { type: mime || 'video/webm' })), ext: mime.includes('mp4') ? 'mp4' : 'webm' })
     }
-    rec.onerror = (e) => reject(e.error || e)
-    rec.start(); if (src) src.start()
+    rec.onerror = (e) => { cleanup(); reject(e.error || e) }
+    rec.start(1000); if (src) src.start()
     const t0 = performance.now()
     const frame = () => {
+      if (signal && signal.aborted) { cancelled = true; if (rec.state !== 'inactive') rec.stop(); return }
       const t = (performance.now() - t0) / 1000
-      if (t >= total + 0.3) { rec.stop(); return }
+      if (t >= total + 0.3) { clearInterval(timer); if (rec.state !== 'inactive') rec.stop(); return }
       let i = 0
       while (i < slides.length - 1 && t >= starts[i + 1]) i++
       const per = durs[i], local = Math.min(per, t - starts[i]), fade = Math.min(FADE, per / 3)
+      const fading = local < fade
       ctx.globalAlpha = 1
-      if (i > 0) drawSlide(ctx, slides[i - 1], W, H, 1); else { ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H) }
-      ctx.globalAlpha = Math.min(1, local / fade)
+      if (fading) { if (i > 0) drawSlide(ctx, slides[i - 1], W, H, 1); else { ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H) } }
+      ctx.globalAlpha = fading ? local / fade : 1
       drawSlide(ctx, slides[i], W, H, local / per)
       ctx.globalAlpha = 1
       onProgress && onProgress(Math.min(1, t / total))
-      requestAnimationFrame(frame)
     }
+    // timer instead of requestAnimationFrame: keeps going even if the tab is hidden for a moment
+    timer = setInterval(frame, 33)
     frame()
   })
 }

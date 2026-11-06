@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { WEDDING } from './config.js'
 import { useMedia, saveMedia, resizeFile, loadImg, firstWorking, buildVideo, closeStudio, audioDuration } from './mediatools.js'
 
@@ -17,6 +17,7 @@ export default function Studio() {
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState(null)
+  const abortRef = useRef(null)
 
   // Photos from config.js (public/images). First path that loads is used.
   const [cfg, setCfg] = useState({ couple: null, bride: null, groom: null })
@@ -81,6 +82,8 @@ export default function Studio() {
     return { td, count, per: mid / count }
   }
   const makeVideo = async () => {
+    if (result && result.url) URL.revokeObjectURL(result.url)
+    const ctl = new AbortController(); abortRef.current = ctl
     setBusy(true); setResult(null); setProgress(0); setMsg('')
     try {
       const portrait = aspect === 'portrait'
@@ -111,8 +114,9 @@ export default function Studio() {
           seq = [{ ...title, dur: td }, ...Array.from({ length: count }, (_, k) => ({ ...photos[k % photos.length], dur: per })), { ...end, dur: td }]
         }
       }
-      setResult(await buildVideo({ slides: seq, audioFile: audio, duration: audioDur || undefined, W, H, onProgress: setProgress }))
-    } catch (e) { setMsg('Could not create the video: ' + (e?.message || 'unsupported browser. Try Chrome.')) }
+      setResult(await buildVideo({ slides: seq, audioFile: audio, duration: audioDur || undefined, W, H, onProgress: setProgress, signal: ctl.signal }))
+    } catch (e) { setMsg(e?.message === 'Cancelled' ? 'Video creation cancelled. You can try again.' : 'Could not create the video: ' + (e?.message || 'unsupported browser. Try Chrome.')) }
+    abortRef.current = null
     setBusy(false)
   }
   const close = closeStudio
@@ -166,7 +170,7 @@ export default function Studio() {
           ? <>🎵 Song length <b>{fmt(audioDur)}</b>. The video will be exactly this long.{photoCount > 0 && (() => { const p = plan(audioDur, photoCount); return ` All ${photoCount} photos are used, each shown for about ${p.per.toFixed(1)} seconds${p.count > photoCount ? ' (repeated to fill the song)' : ''}.` })()}{audioDur > 240 && ' Creating it takes as long as the song, so keep this tab open.'}</>
           : 'Reading song length…'}</p>}
         <div><button className="btn" disabled={busy || !hasPhotos || (audio && !audioDur)} onClick={makeVideo}>{busy ? `Creating… ${Math.round(progress * 100)}%` : '🎬 Create Video'}</button></div>
-        {busy && <><div className="bar"><i style={{ width: progress * 100 + '%' }} /></div><p className="s-note">Keep this tab open and visible until it finishes.</p></>}
+        {busy && <><div className="bar"><i style={{ width: progress * 100 + '%' }} /></div><p className="s-note">Keep this tab open and the screen on until it finishes. Do not refresh the page.</p><button className="btn ghost sm" onClick={() => abortRef.current && abortRef.current.abort()}>Cancel</button></>}
         {result && <div className="res">
           <video src={result.url} controls playsInline />
           <a className="btn" href={result.url} download={`wedding-invitation.${result.ext}`}>⬇ Download video (.{result.ext})</a>
