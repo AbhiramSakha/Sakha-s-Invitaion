@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { WEDDING } from './config.js'
 import Studio from './Studio.jsx'
-import { useMedia, useIsStudio, openStudio } from './Media.js'
+import { useMedia, useIsStudio, openStudio } from './media.js'
 
 const MAP = 'https://www.google.com/maps/search/?api=1&query=Surya+Convention+Hall+Samalkot'
 const CAL =
