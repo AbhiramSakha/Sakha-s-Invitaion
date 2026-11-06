@@ -270,7 +270,7 @@ export default function App() {
         <footer>
           <Reveal>
             <div className="script gold">With Love &amp; Regards</div>
-            <p></p>
+            <p>Family Members</p>
           </Reveal>
         </footer>
       </main>
