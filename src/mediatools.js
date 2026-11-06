@@ -30,7 +30,9 @@ export function useHash() {
   return h
 }
 
-const isStudio = () => location.hash === '#studio' || location.pathname.replace(/\/+$/, '') === '/studio'
+/* Studio opens with the #studio hash, so refreshing never gives a 404 on static hosting.
+   The old /studio path still works if it is already open. */
+const isStudio = () => location.hash === '#studio' || location.pathname.replace(/\/+$/, '').endsWith('/studio')
 export function useIsStudio() {
   const [v, setV] = useState(isStudio)
   useEffect(() => {
@@ -41,12 +43,13 @@ export function useIsStudio() {
   return v
 }
 export function openStudio() {
-  history.pushState(null, '', '/studio')
+  history.pushState(null, '', location.pathname + location.search + '#studio')
   window.dispatchEvent(new Event('studio-nav'))
   window.scrollTo(0, 0)
 }
 export function closeStudio() {
-  history.pushState(null, '', '/')
+  const base = location.pathname.replace(/\/studio\/?$/, '/') || '/'
+  history.pushState(null, '', base + location.search)
   window.dispatchEvent(new Event('studio-nav'))
 }
 
@@ -63,6 +66,14 @@ export async function resizeFile(file, max = 1200) {
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
   URL.revokeObjectURL(url)
   return c.toDataURL('image/jpeg', 0.85)
+}
+// Try each path in order and return the first one that loads (or null)
+export async function firstWorking(list) {
+  for (const s of list || []) {
+    if (!s) continue
+    try { await loadImg(s); return s } catch {}
+  }
+  return null
 }
 
 /* ---------- songs: official embed players (YouTube, Spotify, SoundCloud, Instagram) ---------- */
@@ -103,20 +114,36 @@ export function embedFor(raw) {
 const SLIDE = 3.6, FADE = 0.8
 const SERIF = "'Cormorant Garamond',Georgia,serif", SCRIPT = "'Great Vibes','Brush Script MT',cursive"
 
-function cover(ctx, img, W, H, k) {
-  const r = Math.max(W / img.width, H / img.height) * k
+// Blurred, darkened copy of the photo that fills the whole frame (drawn once per photo)
+function prepBg(img, W, H) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const x = c.getContext('2d')
+  const r = Math.max(W / img.width, H / img.height) * 1.2
   const w = img.width * r, h = img.height * r
-  ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h)
+  try { x.filter = 'blur(28px) brightness(.6)' } catch {}
+  x.drawImage(img, (W - w) / 2, (H - h) / 2, w, h)
+  try { x.filter = 'none' } catch {}
+  x.fillStyle = 'rgba(20,4,10,.3)'; x.fillRect(0, 0, W, H)
+  return c
 }
+
 function drawSlide(ctx, s, W, H, p) {
   const u = Math.min(W, H)
   if (s.kind === 'photo') {
-    cover(ctx, s.img, W, H, 1 + 0.1 * p)
-    const g = ctx.createLinearGradient(0, H * 0.62, 0, H)
-    g.addColorStop(0, 'rgba(20,4,10,0)'); g.addColorStop(1, 'rgba(20,4,10,.88)')
-    ctx.fillStyle = g; ctx.fillRect(0, H * 0.62, W, H * 0.38)
-    if (s.role) { ctx.fillStyle = '#f1d57a'; ctx.font = `700 ${u * 0.034}px ${SERIF}`; ctx.fillText(s.role.toUpperCase().split('').join(' '), W / 2, H * 0.85, W * 0.9) }
-    if (s.name) { ctx.fillStyle = '#fff'; ctx.font = `700 ${u * 0.062}px ${SERIF}`; ctx.fillText(s.name, W / 2, H * 0.91, W * 0.9) }
+    const caption = !!(s.role || s.name)
+    const ah = caption ? H * 0.8 : H            // leave room for the caption
+    if (s.bg) ctx.drawImage(s.bg, 0, 0, W, H)
+    // whole photo is always visible (nothing is cropped), slow gentle zoom
+    const r = Math.min(W / s.img.width, ah / s.img.height) * (1 + 0.05 * p)
+    const w = s.img.width * r, h = s.img.height * r
+    ctx.drawImage(s.img, (W - w) / 2, (ah - h) / 2, w, h)
+    if (caption) {
+      const g = ctx.createLinearGradient(0, H * 0.7, 0, H)
+      g.addColorStop(0, 'rgba(20,4,10,0)'); g.addColorStop(1, 'rgba(20,4,10,.9)')
+      ctx.fillStyle = g; ctx.fillRect(0, H * 0.7, W, H * 0.3)
+      if (s.role) { ctx.fillStyle = '#f1d57a'; ctx.font = `700 ${u * 0.034}px ${SERIF}`; ctx.fillText(s.role.toUpperCase().split('').join(' '), W / 2, H * 0.865, W * 0.9) }
+      if (s.name) { ctx.fillStyle = '#fff'; ctx.font = `700 ${u * 0.056}px ${SERIF}`; ctx.fillText(s.name, W / 2, H * 0.925, W * 0.92) }
+    }
     return
   }
   const bg = ctx.createRadialGradient(W / 2, H * 0.3, 0, W / 2, H * 0.4, Math.max(W, H) * 0.8)
@@ -139,6 +166,13 @@ export async function audioDuration(file) {
 
 export async function buildVideo({ slides, audioFile, duration, W, H, onProgress }) {
   try { await document.fonts.load(`64px 'Great Vibes'`); await document.fonts.load(`700 40px 'Cormorant Garamond'`) } catch {}
+  // one blurred background per unique photo (repeated slides share it)
+  const bgs = new Map()
+  slides.forEach((s) => {
+    if (s.kind !== 'photo') return
+    if (!bgs.has(s.img)) bgs.set(s.img, prepBg(s.img, W, H))
+    s.bg = bgs.get(s.img)
+  })
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H
   const ctx = canvas.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   const stream = canvas.captureStream(30)

@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { WEDDING } from './config.js'
-import { useMedia, saveMedia, resizeFile, loadImg, buildVideo, closeStudio, audioDuration } from './mediatools.js'
+import { useMedia, saveMedia, resizeFile, loadImg, firstWorking, buildVideo, closeStudio, audioDuration } from './mediatools.js'
 
 export default function Studio() {
   const media = useMedia()
@@ -17,6 +17,27 @@ export default function Studio() {
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState(null)
+
+  // Photos from config.js (public/images). First path that loads is used.
+  const [cfg, setCfg] = useState({ couple: null, bride: null, groom: null })
+  useEffect(() => {
+    let off = false
+    ;(async () => {
+      const c = {
+        couple: await firstWorking(WEDDING.coupleImg),
+        bride: await firstWorking(WEDDING.brideImg),
+        groom: await firstWorking(WEDDING.groomImg),
+      }
+      if (!off) setCfg(c)
+    })()
+    return () => { off = true }
+  }, [])
+  // Uploaded photo wins; otherwise the website photo is used
+  const eff = {
+    couple: media.couple || cfg.couple,
+    bride: media.bride || cfg.bride,
+    groom: media.groom || cfg.groom,
+  }
 
   const [extras, setExtras] = useState(media.extras)
   const MAXX = 60
@@ -38,7 +59,20 @@ export default function Studio() {
     setExtras(next); setMsg(''); store(media, next)
   }
   const removeExtra = (i) => { const next = extras.filter((_, j) => j !== i); setExtras(next); store(media, next) }
-  const photoCount = (media.couple ? 1 : 0) + (media.bride ? 1 : 0) + (media.groom ? 1 : 0) + extras.length
+
+  // Every photo that will go in the video, in order, without duplicates
+  const photoList = () => {
+    const list = []
+    const seen = new Set()
+    const add = (src, role, name) => { if (src && !seen.has(src)) { seen.add(src); list.push({ src, role, name }) } }
+    add(eff.couple, 'Together', '')
+    add(eff.bride, 'Bride', WEDDING.bride)
+    add(eff.groom, 'Groom', WEDDING.groom)
+    extras.forEach((x) => add(x, '', ''))
+    return list
+  }
+  const photoCount = photoList().length
+
   // Fit ALL photos inside the song length: title and ending get a few seconds, photos share the rest
   const plan = (dur, n) => {
     const td = Math.min(4, Math.max(2, dur * 0.1))
@@ -59,10 +93,10 @@ export default function Studio() {
         { text: '&', size: 0.1, y: 0.59, script: true, color: '#f1d57a' },
         { text: WEDDING.groom, size: 0.05, y: 0.67 },
         { text: when, size: 0.042, y: 0.8, color: '#f1d57a' }] }]
-      if (media.couple) slides.push({ kind: 'photo', img: await loadImg(media.couple), role: 'Together', name: '' })
-      if (media.bride) slides.push({ kind: 'photo', img: await loadImg(media.bride), role: 'Bride', name: WEDDING.bride })
-      if (media.groom) slides.push({ kind: 'photo', img: await loadImg(media.groom), role: 'Groom', name: WEDDING.groom })
-      for (const x of extras) slides.push({ kind: 'photo', img: await loadImg(x), role: '', name: '' })
+      for (const p of photoList()) {
+        try { slides.push({ kind: 'photo', img: await loadImg(p.src), role: p.role, name: p.name }) }
+        catch { /* skip a file that cannot be read */ }
+      }
       slides.push({ kind: 'text', lines: [
         { text: 'With Love & Regards', size: 0.1, y: 0.3, script: true, color: '#f1d57a' },
         { text: WEDDING.venue, size: 0.055, y: 0.48 },
@@ -82,14 +116,15 @@ export default function Studio() {
     setBusy(false)
   }
   const close = closeStudio
-  const hasPhotos = media.bride || media.groom || media.couple || extras.length
+  const hasPhotos = photoCount > 0
 
   const Slot = ({ k, label }) => (
     <div className="slot">
-      <div className="thumb">{media[k] ? <img src={media[k]} alt={label} /> : <span>{label}</span>}</div>
+      <div className="thumb">{eff[k] ? <img src={eff[k]} alt={label} /> : <span>{label}</span>}</div>
       <label className="btn ghost sm">{media[k] ? 'Change' : 'Upload'}
         <input type="file" accept="image/*" hidden onChange={(e) => setSlot(k, e.target.files[0])} />
       </label>
+      {!media[k] && cfg[k] && <span className="s-note">Using website photo</span>}
       {media[k] && <>
         <a className="lnk" href={media[k]} download={`${k}.jpg`}>Download {k}.jpg</a>
         <button className="lnk" onClick={() => save({ ...media, [k]: null })}>Remove</button>
@@ -116,6 +151,7 @@ export default function Studio() {
           ))}
           {extras.length < MAXX && <label className="ex add">＋<input type="file" accept="image/*" multiple hidden onChange={(e) => addExtras(e.target.files)} /></label>}
         </div>
+        <p className="s-note">Total photos for the video: <b>{photoCount}</b></p>
       </div>
 
       <div className="s-card">
