@@ -194,7 +194,7 @@ export default function App() {
           <Ganesh />
           <p className="sub">|| శ్రీ గణేశాయ నమః ||</p>
           <p className="sub">Sakha's Wedding Invitation</p>
-          <h1 className="script gold">Uma weds Venku</h1>
+          <h1 className="script gold">Uma weds Venky</h1>
           <div className="names">
             {WEDDING.bride} <span className="script gold" style={{ fontSize: '1.6em' }}>&amp;</span> {WEDDING.groom}
           </div>
