@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { WEDDING } from './config.js'
-import { useMedia, saveMedia, resizeFile, loadImg, buildVideo, closeStudio, audioDuration } from './Media.js'
+import { useMedia, saveMedia, resizeFile, loadImg, buildVideo, closeStudio, audioDuration } from './mediatools.js'
 
 export default function Studio() {
   const media = useMedia()
@@ -100,7 +100,7 @@ export default function Studio() {
   return (
     <div className="studio"><div className="s-in">
       <div className="s-top"><h1 className="script gold">Invitation Studio</h1><button className="btn ghost sm" onClick={close}>Close ✕</button></div>
-      <p></p>
+      <p className="s-note">Private tools for you. Photos added here are stored in <b>this browser only</b>. To show them to every guest after deploying, save the photos in <code>public/images/</code>.</p>
       {msg && <div className="s-msg">{msg}</div>}
 
       <div className="s-card">
@@ -134,7 +134,7 @@ export default function Studio() {
         {result && <div className="res">
           <video src={result.url} controls playsInline />
           <a className="btn" href={result.url} download={`wedding-invitation.${result.ext}`}>⬇ Download video (.{result.ext})</a>
-          
+          <p className="s-note">To show it on the website, save it as <code>public/videos/invitation.{result.ext}</code>.</p>
         </div>}
       </div>
     </div></div>
