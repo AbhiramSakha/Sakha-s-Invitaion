@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { WEDDING } from './config.js'
-import { useMedia, saveMedia, resizeFile, loadImg, buildVideo, closeStudio, audioDuration } from './media.js'
+import { useMedia, saveMedia, resizeFile, loadImg, buildVideo, closeStudio, audioDuration } from './Media.js'
 
 export default function Studio() {
   const media = useMedia()
