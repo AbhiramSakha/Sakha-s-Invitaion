@@ -230,13 +230,30 @@ export async function buildVideo({ slides, audioFile, duration, W, H, onProgress
       if (t >= total + 0.3) { clearInterval(timer); if (rec.state !== 'inactive') rec.stop(); return }
       let i = 0
       while (i < slides.length - 1 && t >= starts[i + 1]) i++
-      const per = durs[i], local = Math.min(per, t - starts[i]), fade = Math.min(FADE, per / 3)
-      const fading = local < fade
+      const per = durs[i], local = Math.min(per, t - starts[i])
+      const cur = slides[i], toText = cur.kind === 'text' && i > 0
+      const fade = Math.min(toText ? 1.2 : FADE, per / 3)
       ctx.globalAlpha = 1
-      if (fading) { if (i > 0) drawSlide(ctx, slides[i - 1], W, H, 1); else { ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H) } }
-      ctx.globalAlpha = fading ? local / fade : 1
-      drawSlide(ctx, slides[i], W, H, local / per)
+      if (local < fade) {
+        if (toText) {
+          // photo -> text card: fade out to dark first, then fade the card in (no overlap, no merging)
+          const half = fade / 2
+          ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H)
+          if (local < half) { ctx.globalAlpha = 1 - local / half; drawSlide(ctx, slides[i - 1], W, H, 1) }
+          else { ctx.globalAlpha = (local - half) / half; drawSlide(ctx, cur, W, H, local / per) }
+        } else {
+          // photo -> photo: soft crossfade
+          if (i > 0) drawSlide(ctx, slides[i - 1], W, H, 1); else { ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H) }
+          ctx.globalAlpha = local / fade
+          drawSlide(ctx, cur, W, H, local / per)
+        }
+      } else {
+        drawSlide(ctx, cur, W, H, local / per)
+      }
       ctx.globalAlpha = 1
+      // gentle fade to black in the last 0.7 seconds
+      const left = total - t
+      if (i === slides.length - 1 && left < 0.7) { ctx.fillStyle = `rgba(22,7,13,${Math.min(1, 1 - Math.max(0, left) / 0.7)})`; ctx.fillRect(0, 0, W, H) }
       onProgress && onProgress(Math.min(1, t / total))
     }
     // timer instead of requestAnimationFrame: keeps going even if the tab is hidden for a moment
