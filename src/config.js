@@ -29,7 +29,7 @@ export const WEDDING = {
   showStudioButton: true,
 
   // Optional video saved in public/videos/
-  video: ['/videos/invitation.mp4', '/videos/invitation.webm'],
+  video: [],
 
   // Optional background music file in public/music/ (plays when the invitation is opened).
   bgMusic: '', // e.g. '/music/song.mp3'
