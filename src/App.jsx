@@ -48,15 +48,29 @@ function Petals() {
   )
 }
 
+// Lord Ganesha picture. Put the image at public/images/Ganesh.png
+// If the image is missing, a lamp emoji is shown instead.
+function Ganesh() {
+  const [ok, setOk] = useState(true)
+  return ok
+    ? <img className="ganesh" src="/images/Ganesh.png" alt="Lord Ganesha" onError={() => setOk(false)} />
+    : <div className="lamp">🪔</div>
+}
+
 function Intro({ open, onOpen }) {
   return (
     <div className={'intro' + (open ? ' open' : '')}>
-      <div className="lamp">🪔</div>
+      <Ganesh />
+      <div style={{ letterSpacing: '.12em', fontSize: '1rem', opacity: 0.9 }}>|| శ్రీ గణేశాయ నమః ||</div>
+      <div style={{ letterSpacing: '.25em', fontSize: '.9rem', textTransform: 'uppercase', opacity: 0.8 }}>
+        Sakha's Wedding Invitation
+      </div>
+      <h1 className="script gold">Uma weds Venku</h1>
       <div style={{ letterSpacing: '.3em', fontSize: '.9rem', textTransform: 'uppercase', opacity: 0.8 }}>
         Save the Date
       </div>
-      <h1 className="script gold">Uma &amp; Venkatesh</h1>
       <div style={{ opacity: 0.9, letterSpacing: '.12em' }}>{WEDDING.dayName}, {WEDDING.dateText}</div>
+      <div style={{ opacity: 0.9 }}>📍 {WEDDING.venue}, Samalkot</div>
       <button className="btn" onClick={onOpen}>Open Invitation</button>
     </div>
   )
@@ -161,7 +175,7 @@ export default function App() {
   const share = async () => {
     const data = {
       title: 'Wedding Invitation',
-      text: 'You are invited to the wedding of Ganga Uma Maheswari & Venkatesh on 13 December 2026.',
+      text: 'You are invited to the wedding of Uma & Venku on 13 December 2026.',
       url: location.href,
     }
     try { if (navigator.share) return await navigator.share(data) } catch { return }
@@ -177,19 +191,16 @@ export default function App() {
       <Petals />
       <main>
         <header className="hero">
-          <div style={{ fontSize: '2.6rem' }}>🪔</div>
-          <p className="sub">With the blessings of our beloved families</p>
-          <p className="sub">We cordially invite you to the</p>
-          <h1 className="script gold">Wedding Ceremony</h1>
+          <Ganesh />
+          <p className="sub">|| శ్రీ గణేశాయ నమః ||</p>
+          <p className="sub">Sakha's Wedding Invitation</p>
+          <h1 className="script gold">Uma weds Venku</h1>
           <div className="names">
             {WEDDING.bride} <span className="script gold" style={{ fontSize: '1.6em' }}>&amp;</span> {WEDDING.groom}
           </div>
           <div className="std-label script gold">Save the Date</div>
           <div className="datechip">📅 {WEDDING.dayName}, {WEDDING.dateText}{WEDDING.time && ` · ${WEDDING.time}`}</div>
-          <div className="dateline">Wedding Date · 13-12-2026</div>
-          <p style={{ maxWidth: 520, marginTop: 22, color: 'var(--muted)', fontStyle: 'italic' }}>
-            Your gracious presence will make our celebrations more memorable…
-          </p>
+          <div className="venueline">📍 {WEDDING.venue}, {WEDDING.address}</div>
           <div className="scroll">SCROLL ↓</div>
         </header>
 
@@ -197,7 +208,7 @@ export default function App() {
           <Reveal><h2 className="script gold">The Bride &amp; Groom</h2><div className="orn">❖</div></Reveal>
           <Reveal><CouplePhoto extra={media.couple} alt="Bride and Groom" /></Reveal>
           <div className="pair">
-            <Reveal><NameCard role="Bride" name={WEDDING.bride} initial="G" uploaded={media.bride} files={WEDDING.brideImg} crop={WEDDING.brideCrop} /></Reveal>
+            <Reveal><NameCard role="Bride" name={WEDDING.bride} initial="U" uploaded={media.bride} files={WEDDING.brideImg} crop={WEDDING.brideCrop} /></Reveal>
             <Reveal delay={150}><NameCard role="Groom" name={WEDDING.groom} initial="V" uploaded={media.groom} files={WEDDING.groomImg} crop={WEDDING.groomCrop} /></Reveal>
           </div>
         </section>
