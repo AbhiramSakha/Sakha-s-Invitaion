@@ -65,7 +65,7 @@ function Intro({ open, onOpen }) {
       <div style={{ letterSpacing: '.25em', fontSize: '.9rem', textTransform: 'uppercase', opacity: 0.8 }}>
         Sakha's Wedding Invitation
       </div>
-      <h1 className="script gold">Uma weds Venku</h1>
+      <h1 className="script gold">Uma weds Venky</h1>
       <div style={{ letterSpacing: '.3em', fontSize: '.9rem', textTransform: 'uppercase', opacity: 0.8 }}>
         Save the Date
       </div>
