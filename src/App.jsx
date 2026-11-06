@@ -80,13 +80,22 @@ function CouplePhoto({ extra, alt }) {
   )
 }
 
-function NameCard({ role, name, initial, uploaded, files }) {
+function NameCard({ role, name, initial, uploaded, files, crop }) {
   const [img, next] = useSources([uploaded, ...files])
+  const [cimg, cnext] = useSources(WEDDING.coupleImg || [])
+  const pos = crop?.pos || '50% 30%', zoom = crop?.zoom || 1
   return (
     <div className="person">
-      {img
-        ? <div className="frame"><div className="photo"><img key={img} src={img} alt={name} onError={next} /></div></div>
-        : <div className="initial script gold">{initial}</div>}
+      {img ? (
+        <div className="frame"><div className="photo"><img key={img} src={img} alt={name} onError={next} /></div></div>
+      ) : cimg && crop ? (
+        <div className="frame"><div className="photo">
+          <img key={cimg} src={cimg} alt={name} onError={cnext}
+            style={{ objectPosition: pos, transformOrigin: pos, transform: `scale(${zoom})` }} />
+        </div></div>
+      ) : (
+        <div className="initial script gold">{initial}</div>
+      )}
       <span className="tag">{role}</span>
       <h3>{name}</h3>
     </div>
@@ -188,8 +197,8 @@ export default function App() {
           <Reveal><h2 className="script gold">The Bride &amp; Groom</h2><div className="orn">❖</div></Reveal>
           <Reveal><CouplePhoto extra={media.couple} alt="Bride and Groom" /></Reveal>
           <div className="pair">
-            <Reveal><NameCard role="Bride" name={WEDDING.bride} initial="G" uploaded={media.bride} files={WEDDING.brideImg} /></Reveal>
-            <Reveal delay={150}><NameCard role="Groom" name={WEDDING.groom} initial="V" uploaded={media.groom} files={WEDDING.groomImg} /></Reveal>
+            <Reveal><NameCard role="Bride" name={WEDDING.bride} initial="G" uploaded={media.bride} files={WEDDING.brideImg} crop={WEDDING.brideCrop} /></Reveal>
+            <Reveal delay={150}><NameCard role="Groom" name={WEDDING.groom} initial="V" uploaded={media.groom} files={WEDDING.groomImg} crop={WEDDING.groomCrop} /></Reveal>
           </div>
         </section>
 

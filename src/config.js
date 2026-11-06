@@ -6,20 +6,31 @@ export const WEDDING = {
   venue: 'Surya Convention Hall',
   address: 'Near Lorry Stand, Samalkot',
   state: 'Andhra Pradesh',
+
   // Wedding day (shown clearly on the page)
   dayName: 'Sunday',
   dateText: '13 December 2026',
   time: '', // e.g. '10:30 AM' (leave empty to hide)
-  // Couple photo from your public folder. Paths start with "/" and DON'T include "public".
-  // The site tries each path in order, so just keep the file name that matches yours.
-  // Optional separate photos from public/ (the Studio can also upload them in your browser)
+
+  // Photos live in the "public" folder. Paths start with "/" and DON'T include "public".
+  // Names are case-sensitive on the cloud: "Image1.png" is not "image1.png".
+  coupleImg: ['/images/Image1.png'],
+
+  // Optional separate photos. Leave them if you don't have any.
   brideImg: ['/images/bride.jpg', '/images/bride.jpeg', '/images/bride.png'],
   groomImg: ['/images/groom.jpg', '/images/groom.jpeg', '/images/groom.png'],
+
+  // No separate bride/groom photo? The cards then show a zoomed part of the couple photo.
+  // pos = which part of the photo ("left top" as x% y%), zoom = how close (1 = whole photo).
+  brideCrop: { pos: '15% 30%', zoom: 1.7 },
+  groomCrop: { pos: '85% 25%', zoom: 1.7 },
+
   // Show the "Create a video" button on the page? Set to false before sharing with guests.
   showStudioButton: true,
+
   // Optional video saved in public/videos/
   video: ['/videos/invitation.mp4', '/videos/invitation.webm'],
-  // Optional background music file in public/music/ (plays when the invitation is opened). Use music you have rights to.
+
+  // Optional background music file in public/music/ (plays when the invitation is opened).
   bgMusic: '', // e.g. '/music/song.mp3'
-  coupleImg: ['/images/Image1.png', '/images/Image1.png', '/images/Image1.png', '/Image1.png', '/Image1.png', '/Image1.png'],
 }
