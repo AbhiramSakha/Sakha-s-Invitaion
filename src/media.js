@@ -1,0 +1,185 @@
+import { useEffect, useState } from 'react'
+
+/* ---------- local storage for photos / songs added in the Studio ---------- */
+const KEY = 'wedding-media-v1'
+const empty = { bride: null, groom: null, couple: null, extras: [], songs: [] }
+const load = () => {
+  try { return { ...empty, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...empty } }
+}
+export function saveMedia(next) {
+  try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { return false }
+  window.dispatchEvent(new Event('media-change'))
+  return true
+}
+export function useMedia() {
+  const [m, setM] = useState(load)
+  useEffect(() => {
+    const f = () => setM(load())
+    window.addEventListener('media-change', f)
+    return () => window.removeEventListener('media-change', f)
+  }, [])
+  return m
+}
+export function useHash() {
+  const [h, setH] = useState(location.hash)
+  useEffect(() => {
+    const f = () => setH(location.hash)
+    window.addEventListener('hashchange', f)
+    return () => window.removeEventListener('hashchange', f)
+  }, [])
+  return h
+}
+
+const isStudio = () => location.hash === '#studio' || location.pathname.replace(/\/+$/, '') === '/studio'
+export function useIsStudio() {
+  const [v, setV] = useState(isStudio)
+  useEffect(() => {
+    const f = () => setV(isStudio())
+    ;['hashchange', 'popstate', 'studio-nav'].forEach((e) => window.addEventListener(e, f))
+    return () => ['hashchange', 'popstate', 'studio-nav'].forEach((e) => window.removeEventListener(e, f))
+  }, [])
+  return v
+}
+export function openStudio() {
+  history.pushState(null, '', '/studio')
+  window.dispatchEvent(new Event('studio-nav'))
+  window.scrollTo(0, 0)
+}
+export function closeStudio() {
+  history.pushState(null, '', '/')
+  window.dispatchEvent(new Event('studio-nav'))
+}
+
+/* ---------- images ---------- */
+export const loadImg = (src) => new Promise((res, rej) => {
+  const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src
+})
+export async function resizeFile(file, max = 1200) {
+  const url = URL.createObjectURL(file)
+  const img = await loadImg(url)
+  const k = Math.min(1, max / Math.max(img.width, img.height))
+  const c = document.createElement('canvas')
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+  URL.revokeObjectURL(url)
+  return c.toDataURL('image/jpeg', 0.85)
+}
+
+/* ---------- songs: official embed players (YouTube, Spotify, SoundCloud, Instagram) ---------- */
+const yt = (id, vertical) => (id ? { src: `https://www.youtube.com/embed/${id}?rel=0`, ratio: vertical ? '9 / 16' : '16 / 9', maxW: vertical ? 380 : undefined } : null)
+export function embedFor(raw) {
+  let u
+  try { u = new URL(String(raw).trim()) } catch { return null }
+  const h = u.hostname.replace(/^(www|m)\./, '')
+  if (h === 'youtu.be') return yt(u.pathname.slice(1))
+  if (h.endsWith('youtube.com')) {
+    if (u.pathname.startsWith('/shorts/')) return yt(u.pathname.split('/')[2], true)
+    if (u.pathname.startsWith('/embed/')) return yt(u.pathname.split('/')[2])
+    const v = u.searchParams.get('v'), list = u.searchParams.get('list')
+    if (v) return yt(v)
+    if (list) return { src: `https://www.youtube.com/embed/videoseries?list=${list}`, ratio: '16 / 9' }
+  }
+  if (h === 'vimeo.com') {
+    const id = u.pathname.split('/').filter(Boolean).pop()
+    if (/^\d+$/.test(id)) return { src: `https://player.vimeo.com/video/${id}`, ratio: '16 / 9' }
+  }
+  if (h === 'facebook.com' || h === 'fb.watch') {
+    const vertical = u.pathname.includes('/reel')
+    return { src: `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(raw.trim())}&show_text=false`, ratio: vertical ? '9 / 16' : '16 / 9', maxW: vertical ? 380 : undefined }
+  }
+  if (h === 'open.spotify.com') {
+    const m = u.pathname.match(/\/(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/)
+    if (m) return { src: `https://open.spotify.com/embed/${m[1]}/${m[2]}`, h: m[1] === 'track' ? 152 : 352 }
+  }
+  if (h === 'soundcloud.com') return { src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(raw)}&color=%23b98318`, h: 166 }
+  if (h === 'instagram.com') {
+    const m = u.pathname.match(/\/(reel|p|tv)\/([\w-]+)/)
+    if (m) return { src: `https://www.instagram.com/${m[1]}/${m[2]}/embed`, h: 720, maxW: 480 }
+  }
+  return null
+}
+
+/* ---------- video maker (canvas + MediaRecorder, runs fully in the browser) ---------- */
+const SLIDE = 3.6, FADE = 0.8
+const SERIF = "'Cormorant Garamond',Georgia,serif", SCRIPT = "'Great Vibes','Brush Script MT',cursive"
+
+function cover(ctx, img, W, H, k) {
+  const r = Math.max(W / img.width, H / img.height) * k
+  const w = img.width * r, h = img.height * r
+  ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h)
+}
+function drawSlide(ctx, s, W, H, p) {
+  const u = Math.min(W, H)
+  if (s.kind === 'photo') {
+    cover(ctx, s.img, W, H, 1 + 0.1 * p)
+    const g = ctx.createLinearGradient(0, H * 0.62, 0, H)
+    g.addColorStop(0, 'rgba(20,4,10,0)'); g.addColorStop(1, 'rgba(20,4,10,.88)')
+    ctx.fillStyle = g; ctx.fillRect(0, H * 0.62, W, H * 0.38)
+    if (s.role) { ctx.fillStyle = '#f1d57a'; ctx.font = `700 ${u * 0.034}px ${SERIF}`; ctx.fillText(s.role.toUpperCase().split('').join(' '), W / 2, H * 0.85, W * 0.9) }
+    if (s.name) { ctx.fillStyle = '#fff'; ctx.font = `700 ${u * 0.062}px ${SERIF}`; ctx.fillText(s.name, W / 2, H * 0.91, W * 0.9) }
+    return
+  }
+  const bg = ctx.createRadialGradient(W / 2, H * 0.3, 0, W / 2, H * 0.4, Math.max(W, H) * 0.8)
+  bg.addColorStop(0, '#721232'); bg.addColorStop(1, '#2a0612')
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
+  ctx.strokeStyle = 'rgba(232,195,90,.7)'; ctx.lineWidth = 2
+  ctx.strokeRect(u * 0.03, u * 0.03, W - u * 0.06, H - u * 0.06)
+  ctx.strokeStyle = 'rgba(232,195,90,.3)'; ctx.strokeRect(u * 0.05, u * 0.05, W - u * 0.1, H - u * 0.1)
+  s.lines.forEach((l) => {
+    ctx.fillStyle = l.color || '#fbeedd'
+    ctx.font = `${l.script ? 400 : 700} ${u * l.size}px ${l.script ? SCRIPT : SERIF}`
+    ctx.fillText(l.text, W / 2, H * l.y, W * 0.88)
+  })
+}
+
+export async function audioDuration(file) {
+  const ac = new (window.AudioContext || window.webkitAudioContext)()
+  try { return (await ac.decodeAudioData(await file.arrayBuffer())).duration } finally { ac.close() }
+}
+
+export async function buildVideo({ slides, audioFile, duration, W, H, onProgress }) {
+  try { await document.fonts.load(`64px 'Great Vibes'`); await document.fonts.load(`700 40px 'Cormorant Garamond'`) } catch {}
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H
+  const ctx = canvas.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  const stream = canvas.captureStream(30)
+  let ac, src
+  if (audioFile) {
+    ac = new (window.AudioContext || window.webkitAudioContext)()
+    const buf = await ac.decodeAudioData(await audioFile.arrayBuffer())
+    src = ac.createBufferSource(); src.buffer = buf
+    const dest = ac.createMediaStreamDestination(); src.connect(dest)
+    dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t))
+  }
+  const mime = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+    .find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || ''
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 4000000 } : undefined)
+  const chunks = []
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
+  const durs = slides.map((s) => s.dur || SLIDE)
+  const total = duration || durs.reduce((a, b) => a + b, 0)
+  const starts = durs.map((_, k) => durs.slice(0, k).reduce((a, b) => a + b, 0))
+  return new Promise((resolve, reject) => {
+    rec.onstop = () => {
+      if (ac) ac.close()
+      resolve({ url: URL.createObjectURL(new Blob(chunks, { type: mime || 'video/webm' })), ext: mime.includes('mp4') ? 'mp4' : 'webm' })
+    }
+    rec.onerror = (e) => reject(e.error || e)
+    rec.start(); if (src) src.start()
+    const t0 = performance.now()
+    const frame = () => {
+      const t = (performance.now() - t0) / 1000
+      if (t >= total + 0.3) { rec.stop(); return }
+      let i = 0
+      while (i < slides.length - 1 && t >= starts[i + 1]) i++
+      const per = durs[i], local = Math.min(per, t - starts[i]), fade = Math.min(FADE, per / 3)
+      ctx.globalAlpha = 1
+      if (i > 0) drawSlide(ctx, slides[i - 1], W, H, 1); else { ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H) }
+      ctx.globalAlpha = Math.min(1, local / fade)
+      drawSlide(ctx, slides[i], W, H, local / per)
+      ctx.globalAlpha = 1
+      onProgress && onProgress(Math.min(1, t / total))
+      requestAnimationFrame(frame)
+    }
+    frame()
+  })
+}
