@@ -18,6 +18,7 @@ export default function Studio() {
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState(null)
   const abortRef = useRef(null)
+  const [blurBg, setBlurBg] = useState(false)
 
   // Photos from config.js (public/images). First path that loads is used.
   const [cfg, setCfg] = useState({ couple: null, bride: null, groom: null })
@@ -54,7 +55,7 @@ export default function Studio() {
     const out = []
     for (let k = 0; k < list.length; k++) {
       setMsg(`Adding photo ${k + 1} of ${list.length}…`)
-      try { out.push(await resizeFile(list[k], 1000)) } catch {}
+      try { out.push(await resizeFile(list[k], 1600)) } catch {}
     }
     const next = [...extras, ...out]
     setExtras(next); setMsg(''); store(media, next)
@@ -87,7 +88,7 @@ export default function Studio() {
     setBusy(true); setResult(null); setProgress(0); setMsg('')
     try {
       const portrait = aspect === 'portrait'
-      const W = portrait ? 720 : 1280, H = portrait ? 1280 : 720
+      const W = portrait ? 1080 : 1920, H = portrait ? 1920 : 1080
       const when = `${WEDDING.dayName}, ${WEDDING.dateText}`
       const slides = [{ kind: 'text', lines: [
         { text: 'WE ARE GETTING MARRIED', size: 0.032, y: 0.22, color: '#f1d57a' },
@@ -114,7 +115,7 @@ export default function Studio() {
           seq = [{ ...title, dur: td }, ...Array.from({ length: count }, (_, k) => ({ ...photos[k % photos.length], dur: per })), { ...end, dur: td }]
         }
       }
-      setResult(await buildVideo({ slides: seq, audioFile: audio, duration: audioDur || undefined, W, H, onProgress: setProgress, signal: ctl.signal }))
+      setResult(await buildVideo({ slides: seq, audioFile: audio, duration: audioDur || undefined, W, H, onProgress: setProgress, signal: ctl.signal, blurBg }))
     } catch (e) { setMsg(e?.message === 'Cancelled' ? 'Video creation cancelled. You can try again.' : 'Could not create the video: ' + (e?.message || 'unsupported browser. Try Chrome.')) }
     abortRef.current = null
     setBusy(false)
@@ -139,7 +140,7 @@ export default function Studio() {
   return (
     <div className="studio"><div className="s-in">
       <div className="s-top"><h1 className="script gold">Invitation Studio</h1><button className="btn ghost sm" onClick={close}>Close ✕</button></div>
-      <p className="s-note">Private tools for you. Photos added here are stored in <b>this browser only</b>. To show them to every guest after deploying, save the photos in <code>public/images/</code>.</p>
+      <p>.</p>
       {msg && <div className="s-msg">{msg}</div>}
 
       <div className="s-card">
@@ -163,6 +164,7 @@ export default function Studio() {
         <div className="s-row">
           <label><input type="radio" checked={aspect === 'portrait'} onChange={() => setAspect('portrait')} /> Portrait 9:16 (WhatsApp status, Reels)</label>
           <label><input type="radio" checked={aspect === 'landscape'} onChange={() => setAspect('landscape')} /> Landscape 16:9</label>
+          <label><input type="checkbox" checked={blurBg} onChange={(e) => setBlurBg(e.target.checked)} /> Soft blurred background behind photos (off = clean dark background)</label>
         </div>
         <p className="s-note">Optional music: choose an audio file you have the right to use (mp3, m4a or wav). The video length will match the song.</p>
         <input type="file" accept="audio/*" onChange={(e) => pickAudio(e.target.files[0])} />
@@ -174,7 +176,7 @@ export default function Studio() {
         {result && <div className="res">
           <video src={result.url} controls playsInline />
           <a className="btn" href={result.url} download={`wedding-invitation.${result.ext}`}>⬇ Download video (.{result.ext})</a>
-          <p className="s-note">To show it on the website, save it as <code>public/videos/invitation.{result.ext}</code>.</p>
+          <p></p>
         </div>}
       </div>
     </div></div>

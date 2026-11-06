@@ -57,15 +57,16 @@ export function closeStudio() {
 export const loadImg = (src) => new Promise((res, rej) => {
   const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src
 })
-export async function resizeFile(file, max = 1200) {
+export async function resizeFile(file, max = 2000) {
   const url = URL.createObjectURL(file)
   const img = await loadImg(url)
   const k = Math.min(1, max / Math.max(img.width, img.height))
   const c = document.createElement('canvas')
   c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'
+  g.drawImage(img, 0, 0, c.width, c.height)
   URL.revokeObjectURL(url)
-  return c.toDataURL('image/jpeg', 0.85)
+  return c.toDataURL('image/jpeg', 0.92)
 }
 // Try each path in order and return the first one that loads (or null)
 export async function firstWorking(list) {
@@ -114,25 +115,35 @@ export function embedFor(raw) {
 const SLIDE = 3.6, FADE = 0.8
 const SERIF = "'Cormorant Garamond',Georgia,serif", SCRIPT = "'Great Vibes','Brush Script MT',cursive"
 
-// Blurred, darkened copy of the photo that fills the whole frame (drawn once per photo)
-function prepBg(img, W, H) {
-  const c = document.createElement('canvas'); c.width = W; c.height = H
+// Background behind photos. Small canvas (it is scaled up when drawn) to save memory.
+function prepPlain(W, H) {
+  const c = document.createElement('canvas'); c.width = Math.round(W / 3); c.height = Math.round(H / 3)
   const x = c.getContext('2d')
-  const r = Math.max(W / img.width, H / img.height) * 1.2
+  const g = x.createRadialGradient(c.width / 2, c.height * 0.3, 0, c.width / 2, c.height * 0.4, Math.max(c.width, c.height) * 0.8)
+  g.addColorStop(0, '#721232'); g.addColorStop(1, '#2a0612')
+  x.fillStyle = g; x.fillRect(0, 0, c.width, c.height)
+  return c
+}
+function prepBg(img, W, H) {
+  const c = document.createElement('canvas'); c.width = Math.round(W / 3); c.height = Math.round(H / 3)
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'
+  const r = Math.max(c.width / img.width, c.height / img.height) * 1.2
   const w = img.width * r, h = img.height * r
-  try { x.filter = 'blur(28px) brightness(.6)' } catch {}
-  x.drawImage(img, (W - w) / 2, (H - h) / 2, w, h)
+  try { x.filter = 'blur(8px) brightness(.6)' } catch {}
+  x.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h)
   try { x.filter = 'none' } catch {}
-  x.fillStyle = 'rgba(20,4,10,.3)'; x.fillRect(0, 0, W, H)
+  x.fillStyle = 'rgba(20,4,10,.3)'; x.fillRect(0, 0, c.width, c.height)
   return c
 }
 
-// Pre-scaled copy of a big photo so every frame draws fast (drawn once per photo)
+// Only shrink a photo if it is bigger than the video needs. Never enlarge it here.
 function prepFit(img, W, H) {
-  const k = Math.min(1, (Math.max(W, H) * 1.1) / Math.max(img.width, img.height))
+  const k = Math.min(W / img.width, H / img.height) * 1.06
+  if (k >= 1) return img
   const c = document.createElement('canvas')
   c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k))
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'
+  x.drawImage(img, 0, 0, c.width, c.height)
   return c
 }
 
@@ -144,7 +155,7 @@ function drawSlide(ctx, s, W, H, p) {
     if (s.bg) ctx.drawImage(s.bg, 0, 0, W, H)
     // whole photo is always visible (nothing is cropped), slow gentle zoom
     const pic = s.fit || s.img
-    const r = Math.min(W / pic.width, ah / pic.height) * (1 + 0.05 * p)
+    const r = Math.min(W / pic.width, ah / pic.height) * (1 + 0.03 * p)
     const w = pic.width * r, h = pic.height * r
     ctx.drawImage(pic, (W - w) / 2, (ah - h) / 2, w, h)
     if (caption) {
@@ -174,17 +185,18 @@ export async function audioDuration(file) {
   try { return (await ac.decodeAudioData(await file.arrayBuffer())).duration } finally { ac.close() }
 }
 
-export async function buildVideo({ slides, audioFile, duration, W, H, onProgress, signal }) {
+export async function buildVideo({ slides, audioFile, duration, W, H, onProgress, signal, blurBg = false }) {
   try { await document.fonts.load(`64px 'Great Vibes'`); await document.fonts.load(`700 40px 'Cormorant Garamond'`) } catch {}
   // one pre-scaled copy + one blurred background per unique photo (repeated slides share them)
   const fits = new Map(), bgs = new Map()
+  const plain = blurBg ? null : prepPlain(W, H)
   slides.forEach((s) => {
     if (s.kind !== 'photo') return
-    if (!fits.has(s.img)) { fits.set(s.img, prepFit(s.img, W, H)); bgs.set(s.img, prepBg(s.img, W, H)) }
+    if (!fits.has(s.img)) { fits.set(s.img, prepFit(s.img, W, H)); bgs.set(s.img, blurBg ? prepBg(s.img, W, H) : plain) }
     s.fit = fits.get(s.img); s.bg = bgs.get(s.img)
   })
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H
-  const ctx = canvas.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  const ctx = canvas.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'
   const stream = canvas.captureStream(30)
   let ac, src
   if (audioFile) {
@@ -196,7 +208,7 @@ export async function buildVideo({ slides, audioFile, duration, W, H, onProgress
   }
   const mime = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
     .find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || ''
-  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 4000000 } : undefined)
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 12000000 } : undefined)
   const chunks = []
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
   const durs = slides.map((s) => s.dur || SLIDE)
