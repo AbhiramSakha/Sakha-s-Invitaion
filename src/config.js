@@ -14,11 +14,11 @@ export const WEDDING = {
 
   // Photos live in the "public" folder. Paths start with "/" and DON'T include "public".
   // Names are case-sensitive on the cloud: "Image1.png" is not "image1.png".
-  coupleImg: ['/images/Image1.png'],
+  coupleImg: ['/images/Couple.png'],
 
   // Optional separate photos. Leave them if you don't have any.
-  brideImg: ['/images/bride.jpg', '/images/bride.jpeg', '/images/bride.png'],
-  groomImg: ['/images/groom.jpg', '/images/groom.jpeg', '/images/groom.png'],
+  brideImg: ['/images/Image1.png', '/images/Image1.png', '/images/Image1.png'],
+  groomImg: ['/images/Image2.png', '/images/Image2.png', '/images/Image2.png'],
 
   // No separate bride/groom photo? The cards then show a zoomed part of the couple photo.
   // pos = which part of the photo ("left top" as x% y%), zoom = how close (1 = whole photo).
