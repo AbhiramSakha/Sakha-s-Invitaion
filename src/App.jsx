@@ -48,6 +48,33 @@ function Petals() {
   )
 }
 
+function Fireflies() {
+  const [items] = useState(() =>
+    Array.from({ length: 22 }, () => ({
+      left: Math.random() * 100, top: Math.random() * 100, size: 3 + Math.random() * 4,
+      d: 6 + Math.random() * 9, dx: (Math.random() - 0.5) * 140, dy: (Math.random() - 0.5) * 120,
+    }))
+  )
+  return (
+    <div id="fireflies" aria-hidden="true">
+      {items.map((f, i) => (
+        <span key={i} className="ff"
+          style={{ left: f.left + '%', top: f.top + '%', width: f.size, height: f.size,
+            '--d': f.d + 's', '--dx': f.dx + 'px', '--dy': f.dy + 'px', animationDelay: (-Math.random() * 6) + 's' }} />
+      ))}
+    </div>
+  )
+}
+
+function Marquee() {
+  const t = `Save the Date ✦ ${WEDDING.dateText} ✦ ${WEDDING.venue} ✦ Uma weds Venky ✦ `
+  return (
+    <div className="marquee" aria-hidden="true">
+      <div className="mq">{Array.from({ length: 10 }, (_, i) => <span key={i}>{t}</span>)}</div>
+    </div>
+  )
+}
+
 // Lord Ganesha picture. Put the image at public/images/Ganesh.png
 // If the image is missing, a lamp emoji is shown instead.
 function Ganesh() {
@@ -60,16 +87,16 @@ function Ganesh() {
 function Intro({ open, onOpen }) {
   return (
     <div className={'intro' + (open ? ' open' : '')}>
-      <Ganesh />
-      <div style={{ letterSpacing: '.12em', fontSize: '1rem', opacity: 0.9 }}>|| శ్రీ గణేశాయ నమః ||</div>
-      <div className="inv-title">Sakha's Wedding Invitation</div>
-      <h1 className="script gold">Uma weds Venku</h1>
-      <div style={{ letterSpacing: '.3em', fontSize: '.9rem', textTransform: 'uppercase', opacity: 0.8 }}>
-        Save the Date
+      <div className="intro-card">
+        <Ganesh />
+        <div className="shloka">|| శ్రీ గణేశాయ నమః ||</div>
+        <div className="inv-title">Sakha's Wedding Invitation</div>
+        <h1 className="script gold">Uma weds Venky</h1>
+        <div className="intro-std">Save the Date</div>
+        <div className="intro-when">{WEDDING.dayName}, {WEDDING.dateText}</div>
+        <div className="intro-where">📍 {WEDDING.venue}, Samalkot</div>
+        <button className="seal" onClick={onOpen} aria-label="Open invitation"><span>Open<br />Invitation</span></button>
       </div>
-      <div style={{ opacity: 0.9, letterSpacing: '.12em' }}>{WEDDING.dayName}, {WEDDING.dateText}</div>
-      <div style={{ opacity: 0.9 }}>📍 {WEDDING.venue}, Samalkot</div>
-      <button className="btn" onClick={onOpen}>Open Invitation</button>
     </div>
   )
 }
@@ -144,7 +171,9 @@ function Countdown() {
   return (
     <div className="cd">
       {v.map(([l, n]) => (
-        <div key={l}><b className="gold">{String(n).padStart(2, '0')}</b><span>{l}</span></div>
+        <div key={l} className="ring" style={{ '--p': Math.min(100, (n / ({ Days: 60, Hours: 24, Minutes: 60, Seconds: 60 })[l]) * 100) }}>
+          <b className="gold">{String(n).padStart(2, '0')}</b><span>{l}</span>
+        </div>
       ))}
     </div>
   )
@@ -170,10 +199,37 @@ export default function App() {
   }
   useEffect(() => { document.body.style.overflow = open ? '' : 'hidden' }, [open])
 
+  // cursor spotlight + 3D tilt on cards
+  useEffect(() => {
+    const sel = '.person,.std,.venue,.cta'
+    const root = document.documentElement
+    const move = (e) => {
+      root.style.setProperty('--mx', e.clientX + 'px')
+      root.style.setProperty('--my', e.clientY + 'px')
+      if (e.pointerType === 'touch') return
+      const el = e.target.closest && e.target.closest(sel)
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height
+      el.style.setProperty('--rx', ((0.5 - y) * 7).toFixed(2) + 'deg')
+      el.style.setProperty('--ry', ((x - 0.5) * 9).toFixed(2) + 'deg')
+      el.style.setProperty('--gx', (x * 100).toFixed(0) + '%')
+      el.style.setProperty('--gy', (y * 100).toFixed(0) + '%')
+    }
+    const out = (e) => {
+      const el = e.target.closest && e.target.closest(sel)
+      if (!el || (e.relatedTarget && el.contains(e.relatedTarget))) return
+      el.style.setProperty('--rx', '0deg'); el.style.setProperty('--ry', '0deg')
+    }
+    document.addEventListener('pointermove', move, { passive: true })
+    document.addEventListener('pointerout', out)
+    return () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerout', out) }
+  }, [])
+
   const share = async () => {
     const data = {
       title: 'Wedding Invitation',
-      text: 'You are invited to the wedding of Uma & Venku on 13 December 2026.',
+      text: 'You are invited to the wedding of Uma & Venky on 13 December 2026.',
       url: location.href,
     }
     try { if (navigator.share) return await navigator.share(data) } catch { return }
@@ -186,13 +242,16 @@ export default function App() {
   return (
     <>
       <Intro open={open} onOpen={openInvite} />
+      <div className="progress" />
+      <div className="spot" />
       <Petals />
+      <Fireflies />
       <main>
         <header className="hero">
           <Ganesh />
           <p className="sub">|| శ్రీ గణేశాయ నమః ||</p>
           <p className="inv-title">Sakha's Wedding Invitation</p>
-          <h1 className="script gold">Uma weds Venku</h1>
+          <h1 className="script gold">Uma weds Venky</h1>
           <div className="names">
             {WEDDING.bride} <span className="script gold" style={{ fontSize: '1.6em' }}>&amp;</span> {WEDDING.groom}
           </div>
@@ -201,6 +260,7 @@ export default function App() {
           <div className="venueline">📍 {WEDDING.venue}, {WEDDING.address}</div>
           <div className="scroll">SCROLL ↓</div>
         </header>
+        <Marquee />
 
         <section>
           <Reveal><h2 className="script gold">The Bride &amp; Groom</h2><div className="orn">❖</div></Reveal>
