@@ -68,6 +68,15 @@ export async function resizeFile(file, max = 2000) {
   URL.revokeObjectURL(url)
   return c.toDataURL('image/jpeg', 0.92)
 }
+// Shrink a photo to fit inside the video frame right away (keeps memory small, important on phones)
+export function fitImage(img, W, H) {
+  const k = Math.min(1, W / img.width, H / img.height)
+  const c = document.createElement('canvas')
+  c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k))
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'
+  x.drawImage(img, 0, 0, c.width, c.height)
+  return c
+}
 // Try each path in order and return the first one that loads (or null)
 export async function firstWorking(list) {
   for (const s of list || []) {
@@ -185,7 +194,7 @@ export async function audioDuration(file) {
   try { return (await ac.decodeAudioData(await file.arrayBuffer())).duration } finally { ac.close() }
 }
 
-export async function buildVideo({ slides, audioFile, duration, W, H, onProgress, signal, blurBg = false }) {
+export async function buildVideo({ slides, audioFile, duration, W, H, onProgress, signal, blurBg = false, bitrate = 12000000, fps = 30 }) {
   try { await document.fonts.load(`64px 'Great Vibes'`); await document.fonts.load(`700 40px 'Cormorant Garamond'`) } catch {}
   // one pre-scaled copy + one blurred background per unique photo (repeated slides share them)
   const fits = new Map(), bgs = new Map()
@@ -197,7 +206,7 @@ export async function buildVideo({ slides, audioFile, duration, W, H, onProgress
   })
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H
   const ctx = canvas.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'
-  const stream = canvas.captureStream(30)
+  const stream = canvas.captureStream(fps)
   let ac, src
   if (audioFile) {
     ac = new (window.AudioContext || window.webkitAudioContext)()
@@ -208,7 +217,7 @@ export async function buildVideo({ slides, audioFile, duration, W, H, onProgress
   }
   const mime = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
     .find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || ''
-  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 12000000 } : undefined)
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: bitrate } : undefined)
   const chunks = []
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
   const durs = slides.map((s) => s.dur || SLIDE)
@@ -269,7 +278,7 @@ export async function buildVideo({ slides, audioFile, duration, W, H, onProgress
       onProgress && onProgress(Math.min(1, t / total))
     }
     // timer instead of requestAnimationFrame: keeps going even if the tab is hidden for a moment
-    timer = setInterval(frame, 33)
+    timer = setInterval(frame, Math.round(1000 / fps))
     frame()
   })
 }
