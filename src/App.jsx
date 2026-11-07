@@ -62,10 +62,8 @@ function Intro({ open, onOpen }) {
     <div className={'intro' + (open ? ' open' : '')}>
       <Ganesh />
       <div style={{ letterSpacing: '.12em', fontSize: '1rem', opacity: 0.9 }}>|| శ్రీ గణేశాయ నమః ||</div>
-      <div style={{ letterSpacing: '.25em', fontSize: '.9rem', textTransform: 'uppercase', opacity: 0.8 }}>
-        Sakha's Wedding Invitation
-      </div>
-      <h1 className="script gold">Uma weds Venky</h1>
+      <div className="inv-title">Sakha's Wedding Invitation</div>
+      <h1 className="script gold">Uma weds Venku</h1>
       <div style={{ letterSpacing: '.3em', fontSize: '.9rem', textTransform: 'uppercase', opacity: 0.8 }}>
         Save the Date
       </div>
@@ -193,8 +191,8 @@ export default function App() {
         <header className="hero">
           <Ganesh />
           <p className="sub">|| శ్రీ గణేశాయ నమః ||</p>
-          <p className="sub">Sakha's Wedding Invitation</p>
-          <h1 className="script gold">Uma weds Venky</h1>
+          <p className="inv-title">Sakha's Wedding Invitation</p>
+          <h1 className="script gold">Uma weds Venku</h1>
           <div className="names">
             {WEDDING.bride} <span className="script gold" style={{ fontSize: '1.6em' }}>&amp;</span> {WEDDING.groom}
           </div>

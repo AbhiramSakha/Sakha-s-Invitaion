@@ -272,3 +272,8 @@ section+section::before{content:"";display:block;width:min(70%,420px);height:1px
 .ganesh{width:96px;height:96px;object-fit:contain;margin-bottom:6px;filter:drop-shadow(0 4px 14px rgba(232,195,90,.55))}
 .hero .ganesh{width:110px;height:110px}
 .venueline{margin-top:16px;font-size:1.15rem;font-weight:700;letter-spacing:.06em;color:var(--accent)}
+
+/* ===== Sakha's Wedding Invitation: big, bold, clear ===== */
+.inv-title{margin:10px 0 6px;font-size:clamp(1.6rem,6.4vw,2.6rem);font-weight:700;letter-spacing:.12em;text-transform:uppercase;line-height:1.2;
+  color:var(--accent);text-shadow:0 1px 0 rgba(255,255,255,.35),0 2px 10px rgba(185,131,24,.35);-webkit-text-stroke:.6px currentColor}
+.intro .inv-title{color:#f6dc86;opacity:1;text-shadow:0 2px 14px rgba(0,0,0,.55)}
