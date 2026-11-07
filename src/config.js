@@ -1,8 +1,8 @@
 // Edit your wedding details here.
 export const WEDDING = {
   date: new Date(2026, 11, 13, 0, 0, 0), // 13 Dec 2026 (month is 0-based)
-  bride: 'Sakha Ganga Uma Maheswari',
-  groom: 'Burra Venkatesh',
+  bride: 'Ganga Uma Maheswari',
+  groom: 'Venkatesh',
   venue: 'Surya Convention Hall',
   address: 'Near Lorry Stand, Samalkot',
   state: 'Andhra Pradesh',
