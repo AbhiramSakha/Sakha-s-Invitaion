@@ -194,7 +194,7 @@ export default function Studio() {
         {result && <div className="res">
           <video src={result.url} controls playsInline />
           <a className="btn" href={result.url} download={`wedding-invitation.${result.ext}`}>⬇ Download video (.{result.ext})</a>
-          <p className="s-note">To show it on the website, save it as <code>public/videos/invitation.{result.ext}</code>.</p>
+          <p></p>
         </div>}
       </div>
     </div></div>
