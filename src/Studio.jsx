@@ -187,10 +187,10 @@ export default function Studio() {
         <p className="s-note">Optional music: choose an audio file you have the right to use (mp3, m4a or wav). The video length will match the song.</p>
         <input type="file" accept="audio/*" onChange={(e) => pickAudio(e.target.files[0])} />
         {audio && <p className="s-note">{audioDur
-          ? <>🎵 Song length <b>{fmt(audioDur)}</b>. The video will be exactly this long.{photoCount > 0 && (() => { const p = plan(audioDur, photoCount); return ` All ${photoCount} photos are used, each shown for about ${p.per.toFixed(1)} seconds${p.count > photoCount ? ' (repeated to fill the song)' : ''}.` })()}{audioDur > 240 && ' Creating it takes as long as the song, so keep this tab open.'}</>
+          ? <>🎵 Song length <b>{fmt(audioDur)}</b>. The video will be exactly this long.{photoCount > 0 && (() => { const p = plan(audioDur, photoCount); return ` All ${photoCount} photos are used, each shown for about ${p.per.toFixed(1)} seconds${p.count > photoCount ? ' (repeated to fill the song)' : ''}.` })()}{audioDur > 240 && ' Keep this tab open until it finishes.'}</>
           : 'Reading song length…'}</p>}
         <div><button className="btn" disabled={busy || !hasPhotos || (audio && !audioDur)} onClick={makeVideo}>{busy ? `Creating… ${Math.round(progress * 100)}%` : '🎬 Create Video'}</button></div>
-        {busy && <><div className="bar"><i style={{ width: progress * 100 + '%' }} /></div><p className="s-note">Keep this tab open and the screen on until it finishes. Do not refresh the page.</p><button className="btn ghost sm" onClick={() => abortRef.current && abortRef.current.abort()}>Cancel</button></>}
+        {busy && <><div className="bar"><i style={{ width: progress * 100 + '%' }} /></div><p className="s-note">Keep this tab open until it finishes. Do not refresh the page.</p><button className="btn ghost sm" onClick={() => abortRef.current && abortRef.current.abort()}>Cancel</button></>}
         {result && <div className="res">
           <video src={result.url} controls playsInline />
           <a className="btn" href={result.url} download={`wedding-invitation.${result.ext}`}>⬇ Download video (.{result.ext})</a>

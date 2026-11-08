@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
 
 /* ---------- local storage for photos / songs added in the Studio ---------- */
 const KEY = 'wedding-media-v1'
@@ -120,7 +121,7 @@ export function embedFor(raw) {
   return null
 }
 
-/* ---------- video maker (canvas + MediaRecorder, runs fully in the browser) ---------- */
+/* ---------- video maker (canvas, runs fully in the browser) ---------- */
 const SLIDE = 3.6, FADE = 0.8
 const SERIF = "'Cormorant Garamond',Georgia,serif", SCRIPT = "'Great Vibes','Brush Script MT',cursive"
 
@@ -194,18 +195,105 @@ export async function audioDuration(file) {
   try { return (await ac.decodeAudioData(await file.arrayBuffer())).duration } finally { ac.close() }
 }
 
-export async function buildVideo({ slides, audioFile, duration, W, H, onProgress, signal, blurBg = false, bitrate = 12000000, fps = 30 }) {
-  try { await document.fonts.load(`64px 'Great Vibes'`); await document.fonts.load(`700 40px 'Cormorant Garamond'`) } catch {}
-  // one pre-scaled copy + one blurred background per unique photo (repeated slides share them)
-  const fits = new Map(), bgs = new Map()
-  const plain = blurBg ? null : prepPlain(W, H)
-  slides.forEach((s) => {
-    if (s.kind !== 'photo') return
-    if (!fits.has(s.img)) { fits.set(s.img, prepFit(s.img, W, H)); bgs.set(s.img, blurBg ? prepBg(s.img, W, H) : plain) }
-    s.fit = fits.get(s.img); s.bg = bgs.get(s.img)
+// Draws the video frame for time t (seconds). A pure function of t, so it works offline and live.
+function makeFrameDrawer(ctx, slides, W, H, total) {
+  const durs = slides.map((s) => s.dur || SLIDE)
+  const starts = durs.map((_, k) => durs.slice(0, k).reduce((a, b) => a + b, 0))
+  return (t) => {
+    let i = 0
+    while (i < slides.length - 1 && t >= starts[i + 1]) i++
+    const per = durs[i], local = Math.min(per, t - starts[i])
+    const cur = slides[i], toText = cur.kind === 'text' && i > 0
+    const fade = Math.min(toText ? 1.2 : FADE, per / 3)
+    ctx.globalAlpha = 1
+    if (local < fade) {
+      if (toText) {
+        // photo -> text card: fade out to dark first, then fade the card in
+        const half = fade / 2
+        ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H)
+        if (local < half) { ctx.globalAlpha = 1 - local / half; drawSlide(ctx, slides[i - 1], W, H, 1) }
+        else { ctx.globalAlpha = (local - half) / half; drawSlide(ctx, cur, W, H, local / per) }
+      } else {
+        // photo -> photo: soft crossfade
+        if (i > 0) drawSlide(ctx, slides[i - 1], W, H, 1); else { ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H) }
+        ctx.globalAlpha = local / fade
+        drawSlide(ctx, cur, W, H, local / per)
+      }
+    } else {
+      drawSlide(ctx, cur, W, H, local / per)
+    }
+    ctx.globalAlpha = 1
+    // gentle fade to black in the last 0.7 seconds
+    const left = total - t
+    if (i === slides.length - 1 && left < 0.7) {
+      ctx.fillStyle = `rgba(22,7,13,${Math.min(1, 1 - Math.max(0, left) / 0.7)})`
+      ctx.fillRect(0, 0, W, H)
+    }
+  }
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 0))
+
+// High quality, exact-length MP4 (offline: not real time)
+async function encodeMp4({ canvas, draw, total, W, H, fps, bitrate, audioFile, onProgress, signal }) {
+  const vcfg = { codec: 'avc1.640028', width: W, height: H, bitrate, framerate: fps, latencyMode: 'quality' }
+  if (!(await VideoEncoder.isConfigSupported(vcfg)).supported) throw new Error('no-webcodecs')
+
+  let audioBuf = null, sampleRate = 0, channels = 0
+  if (audioFile) {
+    if (typeof AudioEncoder === 'undefined') throw new Error('no-webcodecs')
+    const ac = new (window.AudioContext || window.webkitAudioContext)()
+    try { audioBuf = await ac.decodeAudioData(await audioFile.arrayBuffer()) } finally { ac.close() }
+    sampleRate = audioBuf.sampleRate; channels = Math.min(2, audioBuf.numberOfChannels)
+    const ok = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate, numberOfChannels: channels, bitrate: 192000 })
+    if (!ok.supported) throw new Error('no-webcodecs')
+  }
+
+  const target = new ArrayBufferTarget()
+  const muxer = new Muxer({
+    target, fastStart: 'in-memory',
+    video: { codec: 'avc', width: W, height: H },
+    audio: audioBuf ? { codec: 'aac', numberOfChannels: channels, sampleRate } : undefined,
   })
-  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H
-  const ctx = canvas.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'
+  let err = null
+  const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: (e) => { err = e } })
+  venc.configure(vcfg)
+
+  const n = Math.ceil(total * fps)
+  for (let k = 0; k < n; k++) {
+    if (signal && signal.aborted) { try { venc.close() } catch {} ; throw new Error('Cancelled') }
+    if (err) throw err
+    draw(k / fps)
+    const frame = new VideoFrame(canvas, { timestamp: Math.round((k * 1e6) / fps), duration: Math.round(1e6 / fps) })
+    venc.encode(frame, { keyFrame: k % (fps * 2) === 0 })
+    frame.close()
+    while (venc.encodeQueueSize > 6) await tick()
+    if (k % 4 === 0) { onProgress && onProgress((k / n) * 0.95); await tick() }
+  }
+  await venc.flush(); venc.close()
+
+  if (audioBuf) {
+    const aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: (e) => { err = e } })
+    aenc.configure({ codec: 'mp4a.40.2', sampleRate, numberOfChannels: channels, bitrate: 192000 })
+    const totalFrames = Math.min(audioBuf.length, Math.ceil(total * sampleRate)), CH = 4096
+    for (let off = 0; off < totalFrames; off += CH) {
+      const len = Math.min(CH, totalFrames - off)
+      const data = new Float32Array(len * channels)
+      for (let c = 0; c < channels; c++) data.set(audioBuf.getChannelData(c).subarray(off, off + len), c * len)
+      const ad = new AudioData({ format: 'f32-planar', sampleRate, numberOfFrames: len, numberOfChannels: channels, timestamp: Math.round((off / sampleRate) * 1e6), data })
+      aenc.encode(ad); ad.close()
+      if (aenc.encodeQueueSize > 20) await tick()
+    }
+    await aenc.flush(); aenc.close()
+  }
+  if (err) throw err
+  muxer.finalize()
+  onProgress && onProgress(1)
+  return { url: URL.createObjectURL(new Blob([target.buffer], { type: 'video/mp4' })), ext: 'mp4' }
+}
+
+// Old real-time recorder, only used when the browser has no WebCodecs
+async function recordLive({ canvas, draw, audioFile, total, onProgress, signal, bitrate, fps }) {
   const stream = canvas.captureStream(fps)
   let ac, src
   if (audioFile) {
@@ -220,14 +308,8 @@ export async function buildVideo({ slides, audioFile, duration, W, H, onProgress
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: bitrate } : undefined)
   const chunks = []
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
-  const durs = slides.map((s) => s.dur || SLIDE)
-  const total = duration || durs.reduce((a, b) => a + b, 0)
-  const starts = durs.map((_, k) => durs.slice(0, k).reduce((a, b) => a + b, 0))
-
-  // keep the screen awake while recording (phones stop the recording when the screen sleeps)
   let wake = null
   try { wake = await navigator.wakeLock?.request('screen') } catch {}
-
   return new Promise((resolve, reject) => {
     let timer = null, cancelled = false
     const cleanup = () => {
@@ -249,36 +331,39 @@ export async function buildVideo({ slides, audioFile, duration, W, H, onProgress
       if (signal && signal.aborted) { cancelled = true; if (rec.state !== 'inactive') rec.stop(); return }
       const t = (performance.now() - t0) / 1000
       if (t >= total + 0.3) { clearInterval(timer); if (rec.state !== 'inactive') rec.stop(); return }
-      let i = 0
-      while (i < slides.length - 1 && t >= starts[i + 1]) i++
-      const per = durs[i], local = Math.min(per, t - starts[i])
-      const cur = slides[i], toText = cur.kind === 'text' && i > 0
-      const fade = Math.min(toText ? 1.2 : FADE, per / 3)
-      ctx.globalAlpha = 1
-      if (local < fade) {
-        if (toText) {
-          // photo -> text card: fade out to dark first, then fade the card in (no overlap, no merging)
-          const half = fade / 2
-          ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H)
-          if (local < half) { ctx.globalAlpha = 1 - local / half; drawSlide(ctx, slides[i - 1], W, H, 1) }
-          else { ctx.globalAlpha = (local - half) / half; drawSlide(ctx, cur, W, H, local / per) }
-        } else {
-          // photo -> photo: soft crossfade
-          if (i > 0) drawSlide(ctx, slides[i - 1], W, H, 1); else { ctx.fillStyle = '#16070d'; ctx.fillRect(0, 0, W, H) }
-          ctx.globalAlpha = local / fade
-          drawSlide(ctx, cur, W, H, local / per)
-        }
-      } else {
-        drawSlide(ctx, cur, W, H, local / per)
-      }
-      ctx.globalAlpha = 1
-      // gentle fade to black in the last 0.7 seconds
-      const left = total - t
-      if (i === slides.length - 1 && left < 0.7) { ctx.fillStyle = `rgba(22,7,13,${Math.min(1, 1 - Math.max(0, left) / 0.7)})`; ctx.fillRect(0, 0, W, H) }
+      draw(Math.min(t, total - 0.001))
       onProgress && onProgress(Math.min(1, t / total))
     }
-    // timer instead of requestAnimationFrame: keeps going even if the tab is hidden for a moment
     timer = setInterval(frame, Math.round(1000 / fps))
     frame()
   })
+}
+
+export async function buildVideo({ slides, audioFile, duration, W, H, onProgress, signal, blurBg = false, bitrate = 12000000, fps = 30 }) {
+  try { await document.fonts.load(`64px 'Great Vibes'`); await document.fonts.load(`700 40px 'Cormorant Garamond'`) } catch {}
+  // one pre-scaled copy + one background per unique photo (repeated slides share them)
+  const fits = new Map(), bgs = new Map()
+  const plain = blurBg ? null : prepPlain(W, H)
+  slides.forEach((s) => {
+    if (s.kind !== 'photo') return
+    if (!fits.has(s.img)) { fits.set(s.img, prepFit(s.img, W, H)); bgs.set(s.img, blurBg ? prepBg(s.img, W, H) : plain) }
+    s.fit = fits.get(s.img); s.bg = bgs.get(s.img)
+  })
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H
+  const ctx = canvas.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'
+
+  const total = duration || slides.reduce((a, s) => a + (s.dur || SLIDE), 0)
+  const draw = makeFrameDrawer(ctx, slides, W, H, total)
+  // higher bitrate than before: this is what removes the blocky look
+  const hiBitrate = Math.max(bitrate, W >= 1080 || H >= 1080 ? 16000000 : 8000000)
+
+  if (typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined') {
+    try {
+      return await encodeMp4({ canvas, draw, total, W, H, fps, bitrate: hiBitrate, audioFile, onProgress, signal })
+    } catch (e) {
+      if (e && e.message !== 'no-webcodecs') throw e
+    }
+  }
+  return recordLive({ canvas, draw, audioFile, total, onProgress, signal, bitrate: hiBitrate, fps })
 }

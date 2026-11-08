@@ -3,6 +3,8 @@ import { WEDDING } from './config.js'
 import Studio from './Studio.jsx'
 import { useMedia, useIsStudio, openStudio } from './mediatools.js'
 
+const IS_MOBILE = typeof navigator !== 'undefined' && (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(hover: none)').matches))
+
 const MAP = 'https://www.google.com/maps/search/?api=1&query=Surya+Convention+Hall+Samalkot'
 const CAL =
   'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' +
@@ -30,9 +32,9 @@ function Reveal({ children, delay = 0 }) {
 }
 
 function Petals() {
-  const colors = ['#f59e0b', '#fb923c', '#ec4899', '#f472b6', '#fbbf24']
+  const colors = ['#f59e0b', '#ea580c', '#fbbf24', '#dc2626', '#f97316']
   const [items] = useState(() =>
-    Array.from({ length: 16 }, (_, i) => ({
+    Array.from({ length: IS_MOBILE ? 7 : 16 }, (_, i) => ({
       left: Math.random() * 100, size: 10 + Math.random() * 12, dur: 11 + Math.random() * 12,
       delay: -Math.random() * 20, dx: (Math.random() - 0.5) * 160, c: colors[i % colors.length],
     }))
@@ -50,11 +52,12 @@ function Petals() {
 
 function Fireflies() {
   const [items] = useState(() =>
-    Array.from({ length: 22 }, () => ({
+    Array.from({ length: IS_MOBILE ? 0 : 14 }, () => ({
       left: Math.random() * 100, top: Math.random() * 100, size: 3 + Math.random() * 4,
       d: 6 + Math.random() * 9, dx: (Math.random() - 0.5) * 140, dy: (Math.random() - 0.5) * 120,
     }))
   )
+  if (!items.length) return null
   return (
     <div id="fireflies" aria-hidden="true">
       {items.map((f, i) => (
@@ -67,7 +70,7 @@ function Fireflies() {
 }
 
 function Marquee() {
-  const t = `Save the Date ✦ ${WEDDING.dateText} ✦ ${WEDDING.venue} ✦ Uma weds Venky ✦ `
+  const t = `Save the Date ❁ ${WEDDING.dateText} ❁ ${WEDDING.venue} ❁ Uma weds Venky ❁ `
   return (
     <div className="marquee" aria-hidden="true">
       <div className="mq">{Array.from({ length: 10 }, (_, i) => <span key={i}>{t}</span>)}</div>
@@ -90,6 +93,7 @@ function Intro({ open, onOpen }) {
       <div className="intro-card">
         <Ganesh />
         <div className="shloka">|| శ్రీ గణేశాయ నమః ||</div>
+        <div className="telugu">శుభ లగ్న పత్రిక</div>
         <div className="inv-title">Sakha's Wedding Invitation</div>
         <h1 className="script gold">Uma weds Venky</h1>
         <div className="intro-std">Save the Date</div>
@@ -114,7 +118,7 @@ function CouplePhoto({ extra, alt }) {
   if (!img) return null
   return (
     <div className="cframe"><div className="cphoto">
-      <img key={img} src={img} alt={alt} onError={next} />
+      <img key={img} src={img} alt={alt} decoding="async" onError={next} />
     </div></div>
   )
 }
@@ -126,10 +130,10 @@ function NameCard({ role, name, initial, uploaded, files, crop }) {
   return (
     <div className="person">
       {img ? (
-        <div className="frame"><div className="photo"><img key={img} src={img} alt={name} onError={next} /></div></div>
+        <div className="frame"><div className="photo"><img key={img} src={img} alt={name} decoding="async" onError={next} /></div></div>
       ) : cimg && crop ? (
         <div className="frame"><div className="photo">
-          <img key={cimg} src={cimg} alt={name} onError={cnext}
+          <img key={cimg} src={cimg} alt={name} decoding="async" onError={cnext}
             style={{ objectPosition: pos, transformOrigin: pos, transform: `scale(${zoom})` }} />
         </div></div>
       ) : (
@@ -179,16 +183,42 @@ function Countdown() {
   )
 }
 
+// Page view counter (free online counter, no backend needed).
+// Counts each browser once, and never counts localhost.
+function useViews() {
+  const [n, setN] = useState(null)
+  useEffect(() => {
+    const ns = WEDDING.viewsNs || 'uma-venky-wedding-2026' // make this unique for your site
+    const base = `https://api.counterapi.dev/v1/${ns}/page-views`
+    const local = /^(localhost|127\.)/.test(location.hostname)
+    let seen = false
+    try { seen = !!localStorage.getItem('wedding-viewed') } catch {}
+    const count = !local && !seen
+    fetch(count ? base + '/up' : base)
+      .then((r) => r.json())
+      .then((d) => {
+        const v = d.count ?? d.value
+        if (typeof v === 'number') setN(v)
+        if (count) try { localStorage.setItem('wedding-viewed', '1') } catch {}
+      })
+      .catch(() => {})
+  }, [])
+  return n
+}
+
 export default function App() {
   const [open, setOpen] = useState(false)
+  const [introGone, setIntroGone] = useState(false)
   const [toast, setToast] = useState('')
   const media = useMedia()
+  const views = useViews()
   const studio = useIsStudio()
   const daysLeft = Math.ceil((WEDDING.date - new Date()) / 86400000)
   const audioRef = useRef(null)
   const [playing, setPlaying] = useState(false)
   const openInvite = () => {
     setOpen(true)
+    setTimeout(() => setIntroGone(true), 1600)
     const el = audioRef.current
     if (el) el.play().then(() => setPlaying(true)).catch(() => {})
   }
@@ -199,14 +229,16 @@ export default function App() {
   }
   useEffect(() => { document.body.style.overflow = open ? '' : 'hidden' }, [open])
 
-  // cursor spotlight + 3D tilt on cards
+  // cursor spotlight + 3D tilt on cards (mouse only, throttled)
   useEffect(() => {
+    if (IS_MOBILE) return
     const sel = '.person,.std,.venue,.cta'
-    const root = document.documentElement
-    const move = (e) => {
-      root.style.setProperty('--mx', e.clientX + 'px')
-      root.style.setProperty('--my', e.clientY + 'px')
-      if (e.pointerType === 'touch') return
+    let spot = null, raf = 0, last = null
+    const run = () => {
+      raf = 0
+      const e = last; if (!e) return
+      spot = spot || document.querySelector('.spot')
+      if (spot) { spot.style.setProperty('--mx', e.clientX + 'px'); spot.style.setProperty('--my', e.clientY + 'px') }
       const el = e.target.closest && e.target.closest(sel)
       if (!el) return
       const r = el.getBoundingClientRect()
@@ -216,6 +248,7 @@ export default function App() {
       el.style.setProperty('--gx', (x * 100).toFixed(0) + '%')
       el.style.setProperty('--gy', (y * 100).toFixed(0) + '%')
     }
+    const move = (e) => { if (e.pointerType === 'touch') return; last = e; if (!raf) raf = requestAnimationFrame(run) }
     const out = (e) => {
       const el = e.target.closest && e.target.closest(sel)
       if (!el || (e.relatedTarget && el.contains(e.relatedTarget))) return
@@ -223,8 +256,9 @@ export default function App() {
     }
     document.addEventListener('pointermove', move, { passive: true })
     document.addEventListener('pointerout', out)
-    return () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerout', out) }
+    return () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerout', out); if (raf) cancelAnimationFrame(raf) }
   }, [])
+  useEffect(() => { document.body.classList.toggle('studio-open', !!studio); return () => document.body.classList.remove('studio-open') }, [studio])
 
   const share = async () => {
     const data = {
@@ -241,7 +275,7 @@ export default function App() {
 
   return (
     <>
-      <Intro open={open} onOpen={openInvite} />
+      {!introGone && <Intro open={open} onOpen={openInvite} />}
       <div className="progress" />
       <div className="spot" />
       <Petals />
@@ -250,6 +284,7 @@ export default function App() {
         <header className="hero">
           <Ganesh />
           <p className="sub">|| శ్రీ గణేశాయ నమః ||</p>
+          <p className="telugu">శుభ లగ్న పత్రిక</p>
           <p className="inv-title">Sakha's Wedding Invitation</p>
           <h1 className="script gold">Uma weds Venky</h1>
           <div className="names">
@@ -329,6 +364,7 @@ export default function App() {
           <Reveal>
             <div className="script gold">With Love &amp; Regards</div>
             <p>Family Members</p>
+            {views !== null && <div className="views">👁 {views.toLocaleString('en-IN')} {views === 1 ? 'view' : 'views'}</div>}
           </Reveal>
         </footer>
       </main>
