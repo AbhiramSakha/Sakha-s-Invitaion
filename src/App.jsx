@@ -183,27 +183,31 @@ function Countdown() {
   )
 }
 
-// Page view counter (free online counter, no backend needed).
-// Counts each browser once, and never counts localhost.
+// Visit counters (free online counter, no backend needed). Never counts localhost.
+//  views    = total visits (counted once per browser session, so a quick refresh is not counted again)
+//  visitors = unique people (each browser counted only once, ever)
 function useViews() {
-  const [n, setN] = useState(null)
+  const [stats, setStats] = useState(null)
   useEffect(() => {
     const ns = WEDDING.viewsNs || 'uma-venky-wedding-2026' // make this unique for your site
-    const base = `https://api.counterapi.dev/v1/${ns}/page-views`
+    const root = `https://api.counterapi.dev/v1/${ns}`
     const local = /^(localhost|127\.)/.test(location.hostname)
-    let seen = false
-    try { seen = !!localStorage.getItem('wedding-viewed') } catch {}
-    const count = !local && !seen
-    fetch(count ? base + '/up' : base)
-      .then((r) => r.json())
-      .then((d) => {
-        const v = d.count ?? d.value
-        if (typeof v === 'number') setN(v)
-        if (count) try { localStorage.setItem('wedding-viewed', '1') } catch {}
-      })
-      .catch(() => {})
+    let newSession = true, newVisitor = true
+    try {
+      newSession = !sessionStorage.getItem('wedding-session')
+      newVisitor = !localStorage.getItem('wedding-viewed')
+    } catch {}
+    const get = (name, up) =>
+      fetch(`${root}/${name}${up ? '/up' : ''}`).then((r) => r.json()).then((d) => d.count ?? d.value).catch(() => null)
+    Promise.all([
+      get('page-views', !local && newSession),
+      get('visitors', !local && newVisitor),
+    ]).then(([views, visitors]) => {
+      if (!local) { try { sessionStorage.setItem('wedding-session', '1'); localStorage.setItem('wedding-viewed', '1') } catch {} }
+      if (typeof views === 'number' || typeof visitors === 'number') setStats({ views, visitors })
+    })
   }, [])
-  return n
+  return stats
 }
 
 export default function App() {
@@ -364,7 +368,12 @@ export default function App() {
           <Reveal>
             <div className="script gold">With Love &amp; Regards</div>
             <p>Family Members</p>
-            {views !== null && <div className="views">👁 {views.toLocaleString('en-IN')} {views === 1 ? 'view' : 'views'}</div>}
+            {views && (
+              <div className="views-row">
+                {typeof views.views === 'number' && <div className="views">👁 {views.views.toLocaleString('en-IN')} {views.views === 1 ? 'view' : 'total views'}</div>}
+                {typeof views.visitors === 'number' && <div className="views">👥 {views.visitors.toLocaleString('en-IN')} {views.visitors === 1 ? 'member' : 'members visited'}</div>}
+              </div>
+            )}
           </Reveal>
         </footer>
       </main>
